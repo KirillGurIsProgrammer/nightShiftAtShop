@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ночная смена</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">ТРАНСТРАКАЗИНА-12</p>
+          <h1>НОЧНАЯ СМЕНА</h1>
+        </div>
+        <div class="shift-status">
+          <span id="visitorCount">Посетитель 1/8</span>
+          <span id="score">Очки: 0</span>
+        </div>
+      </header>
+
+      <section class="shop-layout">
+        <div class="scene" id="scene">
+          <div class="window">
+            <div class="night-sky"></div>
+            <div class="road"></div>
+            <div class="visitor" id="visitor" aria-live="polite">
+              <div class="hat" id="hat"></div>
+              <div class="head">
+                <div class="eyes"><i></i><i></i></div>
+                <div class="mouth"></div>
+              </div>
+              <div class="body"><div class="badge">SHIFT</div></div>
+            </div>
+          </div>
+          <div class="counter">
+            <button id="hideButton" class="hide-button">Спрятаться</button>
+          </div>
+        </div>
+
+        <aside class="panel">
+          <div class="panel-tabs">
+            <button class="tab active" data-tab="inspection">Осмотр</button>
+            <button class="tab" data-tab="patterns">Справочник</button>
+          </div>
+
+          <div id="inspectionTab" class="tab-content active">
+            <h2>Досье посетителя</h2>
+            <dl id="visitorTraits"></dl>
+            <div class="decision">
+              <button id="safeButton" class="safe">Безопасно</button>
+              <button id="dangerButton" class="danger">Угроза</button>
+            </div>
+          </div>
+
+          <div id="patternsTab" class="tab-content">
+            <h2>Опасные паттерны</h2>
+            <ul class="patterns">
+              <li><strong>Чёрные глаза</strong> — не смотреть прямо.</li>
+              <li><strong>Нет лица</strong> — немедленно прятаться.</li>
+              <li><strong>Красная кожа</strong> — ложная форма.</li>
+              <li><strong>Агрессивное поведение</strong> — угроза.</li>
+              <li><strong>Капюшон вниз</strong> — проверьте лицо.</li>
+            </ul>
+          </div>
+
+          <div id="message" class="message" aria-live="polite"></div>
+        </aside>
+      </section>
+    </main>
+
+    <div id="resultOverlay" class="overlay hidden">
+      <div class="result-card">
+        <p class="eyebrow">СМЕНА ЗАВЕРШЕНА</p>
+        <h2 id="resultTitle"></h2>
+        <p id="resultStats"></p>
+        <button id="restartButton">Начать заново</button>
+      </div>
+    </div>
+
+    <script type="module" src="./src/game.js"></script>
+  </body>
+</html>
