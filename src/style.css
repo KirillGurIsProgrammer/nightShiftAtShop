@@ -2,6 +2,7 @@
   color: #d7e3dd;
   background: #090b0d;
   font-family: "Courier New", monospace;
+  font-synthesis: none;
 }
 
 * { box-sizing: border-box; }
@@ -9,20 +10,12 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 50% 20%, #1a2521 0, #090b0d 58%),
-    #090b0d;
+  background: radial-gradient(circle at 50% 20%, #1a2521 0, #090b0d 58%), #090b0d;
 }
 
-button {
-  font: inherit;
-  cursor: pointer;
-}
+button { font: inherit; cursor: pointer; }
 
-.game-shell {
-  width: min(1100px, calc(100% - 32px));
-  margin: 24px auto;
-}
+.game-shell { width: min(1100px, calc(100% - 32px)); margin: 24px auto; }
 
 .topbar {
   display: flex;
@@ -39,18 +32,8 @@ button {
   font-size: clamp(20px, 4vw, 38px);
 }
 
-.eyebrow {
-  margin: 0;
-  color: #7d9487;
-  font-size: 12px;
-  letter-spacing: 0.2em;
-}
-
-.shift-status {
-  display: flex;
-  gap: 20px;
-  color: #9aaca2;
-}
+.eyebrow { margin: 0; color: #7d9487; font-size: 12px; letter-spacing: 0.2em; }
+.shift-status { display: flex; gap: 20px; color: #9aaca2; }
 
 .shop-layout {
   display: grid;
@@ -70,11 +53,11 @@ button {
 }
 
 .window {
+  --dawn: 0;
   position: absolute;
   inset: 34px 28px 130px;
   overflow: hidden;
   border: 8px solid #1c2421;
-  background: #080a0b;
   box-shadow: inset 0 0 30px #000;
 }
 
@@ -82,9 +65,51 @@ button {
   position: absolute;
   inset: 0 0 38%;
   background:
-    radial-gradient(circle at 20% 30%, #d6d0a7 0 1px, transparent 2px),
-    radial-gradient(circle at 72% 18%, #d6d0a7 0 1px, transparent 2px),
+    linear-gradient(
+      calc(180deg),
+      rgba(232, 170, 118, calc(var(--dawn) * 0.52)),
+      rgba(85, 118, 137, calc(var(--dawn) * 0.7)) 35%,
+      rgba(8, 14, 21, calc(1 - var(--dawn) * 0.82)) 100%
+    ),
     linear-gradient(#080e15, #172018);
+  transition: background 1.2s ease;
+}
+
+.star {
+  position: absolute;
+  z-index: 3;
+  border-radius: 50%;
+  background: #fff6cb;
+  box-shadow: 0 0 5px #fff4bb;
+  transition: left 0.8s ease, top 0.8s ease, opacity 1.2s ease;
+  opacity: calc(var(--dawn) * 0.01);
+}
+
+.moon {
+  position: absolute;
+  z-index: 2;
+  left: var(--moon-left);
+  top: var(--moon-top);
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #d9d9c1;
+  box-shadow: 0 0 24px rgba(219, 219, 193, 0.45);
+  transition: left 1.2s ease, top 1.2s ease, opacity 1.2s ease;
+  opacity: calc(1 - var(--dawn) * 0.85);
+}
+
+.horizon-glow {
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  bottom: -20px;
+  height: 65px;
+  border-radius: 50%;
+  background: rgba(240, 173, 111, 0.48);
+  filter: blur(18px);
+  opacity: calc(var(--dawn) * 0.85);
+  transition: opacity 1.2s ease;
 }
 
 .road {
@@ -103,7 +128,7 @@ button {
   --skin: #c98f72;
   --clothes: #4d6177;
   position: absolute;
-  z-index: 2;
+  z-index: 4;
   width: 170px;
   height: 300px;
   left: 50%;
@@ -129,13 +154,7 @@ button {
   border: 3px solid #202321;
 }
 
-.eyes {
-  display: flex;
-  justify-content: space-between;
-  width: 58px;
-  margin: 44px auto 0;
-}
-
+.eyes { display: flex; justify-content: space-between; width: 58px; margin: 44px auto 0; }
 .eyes i {
   width: 10px;
   height: 10px;
@@ -143,13 +162,7 @@ button {
   background: #cfd6ca;
   box-shadow: inset 0 0 0 3px #1a1c1b;
 }
-
-.mouth {
-  width: 30px;
-  height: 4px;
-  margin: 18px auto 0;
-  background: #5f302b;
-}
+.mouth { width: 30px; height: 4px; margin: 18px auto 0; background: #5f302b; }
 
 .hat {
   position: absolute;
@@ -161,6 +174,7 @@ button {
   border-radius: 50% 50% 15% 15%;
   background: #3a403d;
   border-bottom: 8px solid #202421;
+  transition: opacity 0.2s ease;
 }
 
 .hat::after {
@@ -215,80 +229,24 @@ button {
   padding: 12px 18px;
 }
 
-.panel {
-  position: relative;
-  padding: 18px;
-  background: #171c1a;
-}
+.panel { position: relative; padding: 18px; background: #171c1a; }
+.panel-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.tab { border: 1px solid #44554d; color: #94a49a; background: transparent; padding: 9px; }
+.tab.active { color: #d8cfad; background: #28332e; }
+.tab-content { display: block; }
+.panel h2 { color: #c4cfbd; font-size: 18px; }
 
-.panel-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
+dl { margin: 22px 0; min-height: 210px; }
+dt { margin-top: 12px; color: #7d9487; font-size: 12px; text-transform: uppercase; }
+dd { margin: 4px 0; color: #e2e4d8; }
 
-.tab {
-  border: 1px solid #44544d;
-  color: #94a49a;
-  background: transparent;
-  padding: 9px;
-}
-
-.tab.active {
-  color: #d8cfad;
-  background: #28332e;
-}
-
-.tab-content { display: none; }
-.tab-content.active { display: block; }
-
-.panel h2 {
-  color: #c4cfbd;
-  font-size: 18px;
-}
-
-dl {
-  margin: 22px 0;
-  min-height: 210px;
-}
-
-dt {
-  margin-top: 12px;
-  color: #7d9487;
-  font-size: 12px;
-  text-transform: uppercase;
-}
-
-dd {
-  margin: 4px 0;
-  color: #e2e4d8;
-}
-
-.decision {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.decision button {
-  padding: 12px 6px;
-  border: 1px solid;
-  color: #fff;
-  font-weight: bold;
-}
-
+.decision { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.decision button { padding: 12px 6px; border: 1px solid; color: #fff; font-weight: bold; }
 .safe { background: #34483d; border-color: #668171; }
 .danger { background: #58302f; border-color: #8a5650; }
 
-.patterns {
-  padding-left: 18px;
-  line-height: 1.8;
-  color: #abb7af;
-  font-size: 13px;
-}
-
+.patterns { padding-left: 18px; line-height: 1.8; color: #abb7af; font-size: 13px; }
 .patterns strong { color: #d09b58; }
-
 .message {
   position: absolute;
   left: 18px;
@@ -309,8 +267,6 @@ dd {
   background: rgba(5, 7, 6, 0.88);
 }
 
-.overlay.hidden { display: none; }
-
 .result-card {
   width: min(430px, calc(100% - 32px));
   text-align: center;
@@ -318,20 +274,10 @@ dd {
   background: #171c1a;
   padding: 34px;
 }
-
 .result-card h2 { color: #d6a94e; }
-
-.result-card button {
-  margin-top: 12px;
-  padding: 12px 18px;
-  border: 1px solid #7d897e;
-  color: #e2e4d8;
-  background: #28332e;
-}
-
+.result-card button { margin-top: 12px; padding: 12px 18px; border: 1px solid #7d897e; color: #e2e4d8; background: #28332e; }
 .scene.hidden-mode .visitor { opacity: 0.08; }
 .scene.hidden-mode { filter: brightness(0.45); }
-
 .visitor.aggressive { animation: twitch 0.16s infinite alternate; }
 
 @keyframes twitch {
