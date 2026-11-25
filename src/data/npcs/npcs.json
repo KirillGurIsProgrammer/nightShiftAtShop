@@ -1,0 +1,89 @@
+[
+  {
+    "id": "npc_maria",
+    "name": "Мария Ковалёва",
+    "age": 42,
+    "residence": "Дубровка",
+    "profession": "Фельдшер",
+    "personality": "Спокойная, внимательная",
+    "appearance": "Серая куртка, короткие волосы",
+    "vehicle": {
+      "make": "Volga",
+      "model": "Gaz 3110",
+      "color": "Бордовый",
+      "plate": "Н17 КО 27",
+      "fuelType": "petrol",
+      "tankCapacity": 55,
+      "fuelLevel": 12
+    },
+    "documents": {
+      "licenseCategory": "B",
+      "licenseExpiry": "2028-05-14",
+      "insuranceExpiry": "2027-01-31"
+    },
+    "preferences": ["coffee", "bandage"],
+    "schedule": [1, 2, 3, 5],
+    "appearanceChance": 0.8,
+    "history": "Работает в районной больнице.",
+    "storyFeatures": ["Владеет двумя ключами от старого склада"],
+    "behaviorProfile": "Normal"
+  },
+  {
+    "id": "npc_viktor",
+    "name": "Виктор Сомов",
+    "age": 61,
+    "residence": "Лесная Усадьба",
+    "profession": "Лесник",
+    "personality": "Сдержанный, молчаливый",
+    "appearance": "Тёмное пальто, шапка",
+    "vehicle": {
+      "make": "UAZ",
+      "model": "Hunter",
+      "color": "Зелёный",
+      "plate": "М48 ТЕ 24",
+      "fuelType": "diesel",
+      "tankCapacity": 78,
+      "fuelLevel": 31
+    },
+    "documents": {
+      "licenseCategory": "BC",
+      "licenseExpiry": "2029-11-01",
+      "insuranceExpiry": "2027-08-22"
+    },
+    "preferences": ["coffee", "map"],
+    "schedule": [1, 3, 4],
+    "appearanceChance": 0.65,
+    "history": "Регулярно проверяет северный лес.",
+    "storyFeatures": ["Ночью слышал сигналы на старой частоте"],
+    "behaviorProfile": "Suspicious"
+  },
+  {
+    "id": "npc_elena",
+    "name": "Елена Морозова",
+    "age": 29,
+    "residence": "Сосновка",
+    "profession": "Дальнобойщица",
+    "personality": "Открытая, усталая",
+    "appearance": "Куртка-накидка, перчатки",
+    "vehicle": {
+      "make": "Toyota",
+      "model": "Hilux",
+      "color": "Белый",
+      "plate": "О71 РМ 27",
+      "fuelType": "diesel",
+      "tankCapacity": 70,
+      "fuelLevel": 8
+    },
+    "documents": {
+      "licenseCategory": "B",
+      "licenseExpiry": "2028-03-19",
+      "insuranceExpiry": "2026-12-30"
+    },
+    "preferences": ["water", "snack"],
+    "schedule": [2, 4, 5],
+    "appearanceChance": 0.75,
+    "history": "Перевозит продукты на юг региона.",
+    "storyFeatures": ["Проехала пустой трассу, которой не было на карте"],
+    "behaviorProfile": "Nervous"
+  }
+]

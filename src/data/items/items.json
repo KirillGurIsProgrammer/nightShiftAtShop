@@ -1,0 +1,7 @@
+[
+ {"id":"coffee","name":"Кофе в термосе","category":"drink","purchasePrice":45,"salePrice":90,"stock":18,"maxStock":30,"description":"Горячий растворимый кофе."},
+ {"id":"water","name":"Бутылка воды","category":"drink","purchasePrice":20,"salePrice":55,"stock":24,"maxStock":40,"description":"Негазированная вода 1 л."},
+ {"id":"snack","name":"Сухарики","category":"food","purchasePrice":30,"salePrice":75,"stock":16,"maxStock":30,"description":"Сухая закуска длительного хранения."},
+ {"id":"bandage","name":"Аптечный набор","category":"household","purchasePrice":65,"salePrice":130,"stock":8,"maxStock":15,"description":"Бинты и антисептическая салфетка."},
+ {"id":"map","name":"Карта района","category":"automotive","purchasePrice":80,"salePrice":160,"stock":5,"maxStock":10,"description":"Карта дорог с северной частью региона."}
+]
