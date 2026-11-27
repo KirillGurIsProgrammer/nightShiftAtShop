@@ -5,17 +5,15 @@ import type { ShopItem } from '../entities/Item';
 import type { FuelPumpState } from '../entities/FuelPump';
 import itemData from '../data/items/items.json';
 import { NPCManager } from '../systems/npc/NPCManager';
-import { DialogueManager } from '../systems/dialogue/DialogueManager';
+import { DialogueManager, type DialogueChoice, type DialogueRuntimeState } from '../systems/dialogue/DialogueManager';
 import { InspectionManager } from '../systems/inspection/InspectionManager';
 import { FuelManager } from '../systems/fuel/FuelManager';
 import { ShopManager } from '../systems/shop/ShopManager';
 import { EconomyManager } from '../systems/economy/EconomyManager';
 import { EventDirector } from '../systems/events/EventDirector';
 import { SaveManager } from '../persistence/SaveManager';
-import { ComputerShell, type ComputerApp } from '../ui/ComputerShell';
-import { VisitorDialogueUI } from '../ui/VisitorDialogueUI';
-import type { DialogueChoice, DialogueRuntimeState } from '../systems/dialogue/DialogueManager';
 import { VisitManager, type Visit } from '../systems/npc/VisitManager';
+import type { GameUIState, MenuContent } from '../ui/MenuState';
 
 export class Game {
   private readonly npc = new NPCManager();
@@ -26,8 +24,6 @@ export class Game {
   private readonly economy = new EconomyManager();
   private readonly eventDirector = new EventDirector();
   private readonly saves = new SaveManager();
-  private readonly computer: ComputerShell;
-  private readonly dialogueUI: VisitorDialogueUI;
   private visitorId: string;
   private dialogueNodeId = 'greeting';
   private visitResolved = false;
@@ -38,13 +34,14 @@ export class Game {
   private readonly visitManager = new VisitManager();
   private visit!: Visit;
 
-  constructor(private readonly state: GameState, private readonly events: EventBus, root: HTMLElement) {
-    this.computer = new ComputerShell(root, () => ({
-      night: this.state.shift.night,
-      money: this.economy.record.balance,
-      shiftMinutes: this.state.shift.shiftMinutes,
-    }));
-    this.dialogueUI = new VisitorDialogueUI(root);
+  constructor(
+    private readonly state: GameState,
+    private readonly events: EventBus,
+    private readonly ui: GameUIState,
+  ) {
+    this.syncComputerBalance();
+    this.ui.onAction = (action, payload) => this.handleMenuAction(action, payload);
+    this.ui.onDialogueChoice = (choice) => this.chooseDialogue(choice);
 
     const pumps: FuelPumpState[] = Array.from({ length: 5 }, (_, index) => ({
       id: index + 1,
@@ -63,10 +60,7 @@ export class Game {
     this.visitManager.receiveRequest(this.visit);
 
     events.on<{ panel: string }>('ui.open', ({ panel }) => this.openPanel(panel));
-    root.addEventListener('computer.app', (event) => {
-      const detail = (event as CustomEvent<{ app: ComputerApp }>).detail;
-      this.openPanel(detail.app);
-    });
+    events.on<{ app: string }>('computer.app', ({ app }) => this.openPanel(app));
   }
 
   update(deltaSeconds: number): void {
@@ -81,6 +75,88 @@ export class Game {
     }
   }
 
+  private handleMenuAction(action: string, payload?: string | number): void {
+    switch (action) {
+      case 'open-panel':
+        this.openPanel(String(payload ?? ''));
+        break;
+      case 'desktop':
+        this.openComputer();
+        break;
+      case 'close-computer':
+        this.closeComputer();
+        this.events.emit('attention.mode', { mode: 'visitor' });
+        break;
+      case 'return-to-visitor':
+        this.events.emit('attention.mode', { mode: 'visitor' });
+        break;
+      case 'close-dialogue':
+        this.ui.dialogue.open = false;
+        break;
+      case 'save':
+        void this.save().then(() => {
+          this.ui.saveLabel = 'Сохранено';
+          window.setTimeout(() => { this.ui.saveLabel = 'Сохранить'; }, 1300);
+        });
+        break;
+      case 'documents':
+        this.renderDocuments();
+        break;
+      case 'approve':
+        this.resolveVisit('approve');
+        break;
+      case 'refuse':
+        this.resolveVisit('refuse');
+        break;
+      case 'back':
+        this.renderComputer();
+        break;
+      case 'fuel':
+        this.renderFuel();
+        break;
+      case 'complete':
+        this.completeActiveVisit();
+        break;
+      case 'retry-fuel':
+        this.renderFuel();
+        break;
+      case 'retry-shop':
+        this.renderShop();
+        break;
+      case 'cash':
+        this.renderCash();
+        break;
+      case 'select-pump':
+        this.selectPump(Number(payload));
+        break;
+      case 'sell-item':
+        this.sellItem(String(payload ?? ''));
+        break;
+      case 'next':
+        this.nextVisitor();
+        break;
+      case 'sell':
+        this.sellRequestedItem();
+        break;
+      case 'inspect':
+        this.events.emit('attention.mode', { mode: 'outside' });
+        break;
+      case 'dialogue':
+        this.renderDialogue();
+        break;
+      case 'confirm':
+        this.journal.push('Получены и подтверждены инструкции начальства');
+        this.renderMessenger();
+        break;
+      default:
+        throw new Error(`Неизвестное действие меню: ${action}`);
+    }
+  }
+
+  private syncComputerBalance(): void {
+    this.ui.computerBalance = this.economy.record.balance;
+  }
+
   private openPanel(name: string): void {
     if (name === 'database') this.renderComputer();
     else if (name === 'messenger') this.renderMessenger();
@@ -89,27 +165,29 @@ export class Game {
     else if (name === 'visitors') this.renderVisitors();
   }
 
-  private setTitle(title: string, body: string): void {
-    this.computer.open();
-    this.computer.setContent(title, body);
+  private setTitle(title: string, content: Omit<MenuContent, 'title'>): void {
+    this.ui.computerOpen = true;
+    this.ui.computerFocused = true;
+    this.ui.menu = { ...content, title, page: content.page };
   }
 
   private renderComputer(): void {
     const record = this.npc.getRecord(this.visitorId);
     if (!record) return;
     this.state.setActivity('Проверка базы данных');
-    this.setTitle('База данных — посетители', `
-      <input id="database-search" class="panel-input" value="${record.name}" aria-label="Поиск по базе" />
-      <div class="database-card">
-        <strong>${record.name}</strong><span>${record.age} лет · ${record.residence}</span>
-        <span>Профессия: ${record.profession}</span>
-        <span>Автомобиль: ${record.vehicle.make} ${record.vehicle.model}, ${record.vehicle.color}</span>
-        <span>Номер: ${record.vehicle.plate}</span>
-      </div>
-      <div class="panel-actions">
-        <button data-action="documents">Проверить документы</button>
-      </div>`);
-    this.computer.element.querySelector('[data-action="documents"]')?.addEventListener('click', () => this.renderDocuments());
+    this.setTitle('База данных — посетители', {
+      page: 'database',
+      cards: [{
+        title: record.name,
+        details: [
+          `${record.age} лет · ${record.residence}`,
+          `Профессия: ${record.profession}`,
+          `Автомобиль: ${record.vehicle.make} ${record.vehicle.model}, ${record.vehicle.color}`,
+          `Номер: ${record.vehicle.plate}`,
+        ],
+      }],
+      actions: [{ label: 'Проверить документы', action: 'documents' }],
+    });
   }
 
   private documents(): IdentityDocument[] {
@@ -128,14 +206,21 @@ export class Game {
     this.visitManager.beginInspection(this.visit);
     const documents = this.documents();
     this.state.setActivity('Сверка документов');
-    this.setTitle('Документы посетителя', `
-      <div class="document-stack">
-        ${documents.map((document) => `<article class="document-card"><strong>${document.type === 'license' ? 'Водительское удостоверение' : document.type === 'registration' ? 'Регистрационные документы' : 'Страховка'}</strong><span>${document.ownerName}</span><span>${document.plate}</span><span>${document.vehicleModel}</span><span>До: ${document.expiryDate}</span></article>`).join('')}
-      </div>
-      <div class="computer-actions"><button data-action="approve">Разрешить</button><button data-action="refuse" class="danger">Отказать</button><button data-action="back">Назад</button></div>`);
-    this.computer.element.querySelector('[data-action="approve"]')?.addEventListener('click', () => this.resolveVisit('approve'));
-    this.computer.element.querySelector('[data-action="refuse"]')?.addEventListener('click', () => this.resolveVisit('refuse'));
-    this.computer.element.querySelector('[data-action="back"]')?.addEventListener('click', () => this.renderComputer());
+    this.setTitle('Документы посетителя', {
+      page: 'documents',
+      documents: documents.map((document) => ({
+        title: document.type === 'license' ? 'Водительское удостоверение' : document.type === 'registration' ? 'Регистрационные документы' : 'Страховка',
+        ownerName: document.ownerName,
+        plate: document.plate,
+        vehicleModel: document.vehicleModel,
+        expiryDate: document.expiryDate,
+      })),
+      actions: [
+        { label: 'Разрешить', action: 'approve' },
+        { label: 'Отказать', action: 'refuse', danger: true },
+        { label: 'Назад', action: 'back' },
+      ],
+    });
   }
 
   private resolveVisit(decision: 'approve' | 'refuse'): void {
@@ -156,16 +241,23 @@ export class Game {
       this.npc.adjustRelationship(record.id, -6);
       this.journal.push(`Ошибочное решение: ${record.name}`);
     }
+    this.syncComputerBalance();
 
     if (decision === 'approve') {
       this.visitManager.makeDecision(this.visit, true);
-      this.setTitle('Решение: РАЗРЕШЕНО', `<p>Автомобиль допущен к заправке на колонке <strong>${this.visit.pumpId}</strong>.</p><div class="computer-actions"><button data-action="fuel">Начать заправку</button></div>`);
-      this.computer.element.querySelector('[data-action="fuel"]')?.addEventListener('click', () => this.renderFuel());
+      this.setTitle('Решение: РАЗРЕШЕНО', {
+        page: 'result',
+        message: `Автомобиль допущен к заправке на колонке ${this.visit.pumpId}.`,
+        actions: [{ label: 'Начать заправку', action: 'fuel' }],
+      });
     } else {
       this.visitManager.makeDecision(this.visit, false, 'Игрок отказал в обслуживании');
       this.visitManager.completePayment(this.visit);
-      this.setTitle('Решение: ОТКАЗ', `<p>Причина сохранена в визите. Посетитель может покинуть окно.</p><div class="computer-actions"><button data-action="complete">Завершить визит</button></div>`);
-      this.computer.element.querySelector('[data-action="complete"]')?.addEventListener('click', () => this.completeActiveVisit());
+      this.setTitle('Решение: ОТКАЗ', {
+        page: 'result',
+        message: 'Причина сохранена в визите. Посетитель может покинуть окно.',
+        actions: [{ label: 'Завершить визит', action: 'complete' }],
+      });
     }
   }
 
@@ -195,33 +287,42 @@ export class Game {
       : node.npcText;
     this.state.setActivity('Разговор с посетителем');
     this.visitManager.startConversation(this.visit);
-    this.dialogueUI.open({ ...node, npcText: requestText, choices }, record.name, this.dialogueHistory, (choice: DialogueChoice) => {
-      this.dialogue.applyChoice(choice, this.dialogueRuntime!);
-      this.visitManager.completeConversation(this.visit);
+    this.ui.dialogue = {
+      open: true,
+      name: record.name,
+      text: requestText,
+      history: [...this.dialogueHistory],
+      choices,
+    };
+  }
 
-      const npcState = this.npc.getState(record.id);
-      npcState.relationship = this.dialogueRuntime!.relationship;
-      npcState.trust = this.dialogueRuntime!.trust;
-      npcState.suspicion = this.dialogueRuntime!.suspicion;
-      npcState.knownFacts = [...this.dialogueRuntime!.knownFacts];
-      npcState.storyFlags = [...this.dialogueRuntime!.storyFlags];
-      this.dialogueHistory.push(`Игрок: ${choice.text}`);
-      if (choice.isEnding || choice.nextNodeId === 'documents') {
-        this.dialogueHistory.push(`Посетитель передал документы для проверки.`);
-        this.dialogueUI.close();
-        this.computer.open('database');
-        this.renderDocuments();
-        return;
+  private chooseDialogue(choice: DialogueChoice): void {
+    const record = this.npc.getRecord(this.visitorId);
+    if (!record || !this.dialogueRuntime) return;
+    this.dialogue.applyChoice(choice, this.dialogueRuntime);
+    this.visitManager.completeConversation(this.visit);
+    const npcState = this.npc.getState(record.id);
+    npcState.relationship = this.dialogueRuntime.relationship;
+    npcState.trust = this.dialogueRuntime.trust;
+    npcState.suspicion = this.dialogueRuntime.suspicion;
+    npcState.knownFacts = [...this.dialogueRuntime.knownFacts];
+    npcState.storyFlags = [...this.dialogueRuntime.storyFlags];
+    this.dialogueHistory.push(`Игрок: ${choice.text}`);
+    if (choice.isEnding || choice.nextNodeId === 'documents') {
+      this.dialogueHistory.push('Посетитель передал документы для проверки.');
+      this.ui.dialogue.open = false;
+      this.openComputer();
+      this.renderDocuments();
+      return;
+    }
+    if (choice.nextNodeId) {
+      this.dialogueNodeId = choice.nextNodeId;
+      const nextNode = this.dialogue.getNode(choice.nextNodeId);
+      if (nextNode) {
+        this.dialogueHistory.push(`Посетитель: ${nextNode.npcText}`);
+        this.renderDialogue();
       }
-      if (choice.nextNodeId) {
-        this.dialogueNodeId = choice.nextNodeId;
-        const nextNode = this.dialogue.getNode(choice.nextNodeId);
-        if (nextNode) {
-          this.dialogueHistory.push(`Посетитель: ${nextNode.npcText}`);
-          this.renderDialogue();
-        }
-      }
-    });
+    }
   }
 
   private renderFuel(): void {
@@ -230,59 +331,93 @@ export class Game {
     const tankNeeded = Math.ceil(record.vehicle.tankCapacity - record.vehicle.fuelLevel);
     this.visitManager.startFueling(this.visit);
     this.state.setActivity('Заправка автомобиля');
-    this.setTitle('ЗАПРАВКА / КОЛОНКИ', `<p>Запрос посетителя: колонка <strong>${this.visit.pumpId}</strong><br>Автомобиль: <strong>${record.vehicle.make} ${record.vehicle.model}</strong><br>Нужно: <strong>${tankNeeded} л</strong> · ${record.vehicle.fuelType === 'diesel' ? 'Дизель' : 'Бензин'}</p><div class="pump-grid">${this.fuel.getPumps().map((pump) => `<button data-pump="${pump.id}">КОЛОНКА ${pump.id}<br>${pump.fuelType === 'diesel' ? 'Дизель' : 'Бензин'} · ${pump.stock} л</button>`).join('')}</div>`);
-    this.computer.element.querySelectorAll<HTMLButtonElement>('[data-pump]').forEach((button) => {
-      button.addEventListener('click', () => {
-        const pumpId = Number(button.dataset.pump);
-        if (pumpId !== this.visit.pumpId) {
-          this.setTitle('ЗАПРАВКА / НЕВЕРНАЯ КОЛОНКА', `<p>Посетитель просил колонку <strong>${this.visit.pumpId}</strong>. Текущая операция отменена.</p><div class="computer-actions"><button data-action="retry">Выбрать колонку снова</button></div>`);
-          this.computer.element.querySelector('[data-action="retry"]')?.addEventListener('click', () => this.renderFuel());
-          return;
-        }
-        const result = this.fuel.dispense(pumpId, record.vehicle.fuelType, record.vehicle.tankCapacity, record.vehicle.fuelLevel, tankNeeded);
-        if (!result.success) {
-          this.setTitle('ЗАПРАВКА / ОШИБКА', `<p>Причина: ${result.reason ?? 'ошибка'}.</p><div class="computer-actions"><button data-action="retry">Повторить</button></div>`);
-          this.computer.element.querySelector('[data-action="retry"]')?.addEventListener('click', () => this.renderFuel());
-          return;
-        }
-        record.vehicle.fuelLevel += result.liters;
-        this.economy.addRevenue(result.cost);
-        this.state.shift.money = this.economy.record.balance;
-        this.visitManager.finishFueling(this.visit);
-
-        if (this.visit.purchaseItemId) {
-          this.setTitle('ЗАПРАВКА / ЗАВЕРШЕНО', `<p>Выдано <strong>${result.liters} л</strong>. Сумма топлива: <strong>${result.cost} ₽</strong>.</p><div class="computer-actions"><button data-action="cash">Оформить запрошенный товар</button></div>`);
-          this.computer.element.querySelector('[data-action="cash"]')?.addEventListener('click', () => this.renderCash());
-        } else {
-          this.visit.progress.paymentCompleted = true;
-          this.visitManager.completePayment(this.visit);
-          this.setTitle('ЗАПРАВКА / ЗАВЕРШЕНО', `<p>Выдано <strong>${result.liters} л</strong>. Оплата: <strong>${result.cost} ₽</strong>.</p><div class="computer-actions"><button data-action="complete">Завершить обслуживание</button></div>`);
-          this.computer.element.querySelector('[data-action="complete"]')?.addEventListener('click', () => this.completeActiveVisit());
-        }
-      });
+    this.setTitle('ЗАПРАВКА / КОЛОНКИ', {
+      page: 'fuel',
+      message: `Запрос посетителя: колонка ${this.visit.pumpId} · Автомобиль: ${record.vehicle.make} ${record.vehicle.model} · Нужно: ${tankNeeded} л · ${record.vehicle.fuelType === 'diesel' ? 'Дизель' : 'Бензин'}`,
+      entryAction: 'select-pump',
+      entries: this.fuel.getPumps().map((pump) => ({
+        id: String(pump.id),
+        title: `КОЛОНКА ${pump.id}`,
+        detail: `${pump.fuelType === 'diesel' ? 'Дизель' : 'Бензин'} · ${pump.stock} л`,
+      })),
     });
+  }
+
+  private selectPump(pumpId: number): void {
+    const record = this.npc.getRecord(this.visitorId);
+    if (!record) return;
+    const tankNeeded = Math.ceil(record.vehicle.tankCapacity - record.vehicle.fuelLevel);
+    if (pumpId !== this.visit.pumpId) {
+      this.setTitle('ЗАПРАВКА / НЕВЕРНАЯ КОЛОНКА', {
+        page: 'result',
+        message: `Посетитель просил колонку ${this.visit.pumpId}. Текущая операция отменена.`,
+        actions: [{ label: 'Выбрать колонку снова', action: 'retry-fuel' }],
+      });
+      return;
+    }
+    const result = this.fuel.dispense(pumpId, record.vehicle.fuelType, record.vehicle.tankCapacity, record.vehicle.fuelLevel, tankNeeded);
+    if (!result.success) {
+      this.setTitle('ЗАПРАВКА / ОШИБКА', {
+        page: 'result',
+        message: `Причина: ${result.reason ?? 'ошибка'}.`,
+        actions: [{ label: 'Повторить', action: 'retry-fuel' }],
+      });
+      return;
+    }
+    record.vehicle.fuelLevel += result.liters;
+    this.economy.addRevenue(result.cost);
+    this.state.shift.money = this.economy.record.balance;
+    this.syncComputerBalance();
+    this.visitManager.finishFueling(this.visit);
+
+    if (this.visit.purchaseItemId) {
+      this.setTitle('ЗАПРАВКА / ЗАВЕРШЕНО', {
+        page: 'result',
+        message: `Выдано ${result.liters} л. Сумма топлива: ${result.cost} ₽.`,
+        actions: [{ label: 'Оформить запрошенный товар', action: 'cash' }],
+      });
+    } else {
+      this.visit.progress.paymentCompleted = true;
+      this.visitManager.completePayment(this.visit);
+      this.setTitle('ЗАПРАВКА / ЗАВЕРШЕНО', {
+        page: 'result',
+        message: `Выдано ${result.liters} л. Оплата: ${result.cost} ₽.`,
+        actions: [{ label: 'Завершить обслуживание', action: 'complete' }],
+      });
+    }
   }
 
   private renderShop(): void {
     this.state.setActivity('Продажа товаров');
-    this.setTitle('МАГАЗИН / НОВАЯ ПРОДАЖА', `<div class="shop-grid">${this.shop.getItems().map((item) => `<button data-item="${item.id}" ${item.stock <= 0 ? 'disabled' : ''}><strong>${item.name}</strong><span>${item.salePrice} ₽ · остаток ${item.stock}</span></button>`).join('')}</div><div class="computer-actions"><button data-action="next">Завершить визит</button></div>`);
-    this.computer.element.querySelectorAll<HTMLButtonElement>('[data-item]').forEach((button) => {
-      button.addEventListener('click', () => {
-        const itemId = button.dataset.item ?? '';
-        const itemBefore = this.shop.getItems().find((item) => item.id === itemId);
-        const result = this.shop.sell(itemId, 1);
-        if (!result.success) {
-          this.setTitle('МАГАЗИН / НЕДОСТУПНО', `<p>Товар закончился или не найден.</p><div class="computer-actions"><button data-action="retry">Назад к ассортименту</button></div>`);
-          this.computer.element.querySelector('[data-action="retry"]')?.addEventListener('click', () => this.renderShop());
-          return;
-        }
-        this.economy.addRevenue(result.cost);
-        this.state.shift.money = this.economy.record.balance;
-        this.journal.push(`Продан товар: ${itemBefore?.name ?? itemId}`);
-        this.renderShop();
-      });
+    this.setTitle('МАГАЗИН / НОВАЯ ПРОДАЖА', {
+      page: 'shop',
+      entryAction: 'sell-item',
+      entries: this.shop.getItems().map((item) => ({
+        id: item.id,
+        title: item.name,
+        detail: `${item.salePrice} ₽ · остаток ${item.stock}`,
+        disabled: item.stock <= 0,
+      })),
+      actions: [{ label: 'Завершить визит', action: 'next' }],
     });
-    this.computer.element.querySelector('[data-action="next"]')?.addEventListener('click', () => this.nextVisitor());
+  }
+
+  private sellItem(itemId: string): void {
+    const itemBefore = this.shop.getItems().find((item) => item.id === itemId);
+    const result = this.shop.sell(itemId, 1);
+    if (!result.success) {
+      this.setTitle('МАГАЗИН / НЕДОСТУПНО', {
+        page: 'result',
+        message: 'Товар закончился или не найден.',
+        actions: [{ label: 'Назад к ассортименту', action: 'retry-shop' }],
+      });
+      return;
+    }
+    this.economy.addRevenue(result.cost);
+    this.state.shift.money = this.economy.record.balance;
+    this.syncComputerBalance();
+    this.journal.push(`Продан товар: ${itemBefore?.name ?? itemId}`);
+    this.renderShop();
   }
 
   private renderCash(): void {
@@ -290,27 +425,44 @@ export class Game {
     const record = this.npc.getRecord(this.visitorId);
     if (!record) return;
     const requested = this.shop.getItems().find((item) => item.id === this.visit.purchaseItemId);
-    this.setTitle('КАССА / ПОКУПКА ПОСЕТИТЕЛЯ', `
-      <div class="cash-balance"><span>ЗАПРОС ПОСЕТИТЕЛЯ</span><strong>${requested?.name ?? 'Товар не указан'} · ${requested?.salePrice ?? 0} ₽</strong></div>
-      <dl class="legacy-grid"><dt>Посетитель</dt><dd>${record.name}</dd><dt>Текущий баланс</dt><dd>${report.balance} ₽</dd><dt>Остаток товара</dt><dd>${requested?.stock ?? 0}</dd></dl>
-      <div class="computer-actions"><button data-action="sell" ${requested?.stock === 0 ? 'disabled' : ''}>Подтвердить продажу</button><button data-action="complete" ${this.visit.progress.purchaseCompleted ? '' : 'disabled'}>Завершить обслуживание</button></div>`);
-    this.computer.element.querySelector('[data-action="sell"]')?.addEventListener('click', () => {
-      if (!requested || this.visit.progress.purchaseCompleted) return;
-      const sale = this.shop.sell(requested.id, 1);
-      if (!sale.success) return;
-      this.economy.addRevenue(sale.cost);
-      this.state.shift.money = this.economy.record.balance;
-      this.visitManager.completePurchase(this.visit);
-      this.visitManager.completePayment(this.visit);
-      this.journal.push(`Посетитель приобрёл товар: ${requested.name}`);
-      this.renderCash();
+    this.setTitle('КАССА / ПОКУПКА ПОСЕТИТЕЛЯ', {
+      page: 'cash',
+      cards: [{
+        title: 'ЗАПРОС ПОСЕТИТЕЛЯ',
+        details: [`${requested?.name ?? 'Товар не указан'} · ${requested?.salePrice ?? 0} ₽`],
+      }],
+      rows: [
+        { label: 'Посетитель', value: record.name },
+        { label: 'Текущий баланс', value: `${report.balance} ₽` },
+        { label: 'Остаток товара', value: requested?.stock ?? 0 },
+      ],
+      actions: [
+        { label: 'Подтвердить продажу', action: 'sell', disabled: requested?.stock === 0 || !requested },
+        { label: 'Завершить обслуживание', action: 'complete', disabled: !this.visit.progress.purchaseCompleted },
+      ],
     });
-    this.computer.element.querySelector('[data-action="complete"]')?.addEventListener('click', () => this.completeActiveVisit());
+  }
+
+  private sellRequestedItem(): void {
+    const requested = this.shop.getItems().find((item) => item.id === this.visit.purchaseItemId);
+    if (!requested || this.visit.progress.purchaseCompleted) return;
+    const sale = this.shop.sell(requested.id, 1);
+    if (!sale.success) return;
+    this.economy.addRevenue(sale.cost);
+    this.state.shift.money = this.economy.record.balance;
+    this.syncComputerBalance();
+    this.visitManager.completePurchase(this.visit);
+    this.visitManager.completePayment(this.visit);
+    this.journal.push(`Посетитель приобрёл товар: ${requested.name}`);
+    this.renderCash();
   }
 
   private completeActiveVisit(): void {
     if (!this.visitManager.completeVisit(this.visit)) {
-      this.setTitle('ВИЗИТ НЕ ЗАВЕРШЁН', '<p>Есть обязательные действия: решение, заправка, товар или оплата.</p>');
+      this.setTitle('ВИЗИТ НЕ ЗАВЕРШЁН', {
+        page: 'result',
+        message: 'Есть обязательные действия: решение, заправка, товар или оплата.',
+      });
       return;
     }
     this.nextVisitor();
@@ -328,33 +480,52 @@ export class Game {
     this.visit = this.visitManager.create(record.id, pumpId, record.preferences[0] ?? null);
     this.visitManager.receiveRequest(this.visit);
     this.state.setActivity('Посетитель у окна — ожидает внимания');
-    this.computer.renderDesktop();
+    this.openComputer();
     this.journal.push(`Прибыл посетитель: ${record.name}`);
   }
 
   private renderVisitors(): void {
     const record = this.npc.getRecord(this.visitorId);
     if (!record) return;
-    const state = this.npc.getState(record.id);
+    const visitorState = this.npc.getState(record.id);
     this.state.setActivity('Обслуживание посетителя');
-    this.setTitle('ПОСЕТИТЕЛИ / АКТИВНЫЙ ВИЗИТ', `
-      <div class="visitor-card"><div class="visitor-avatar"><span>${record.name.slice(0, 1)}</span></div><div><b>${record.name}</b><span>${record.age} лет · ${record.residence}</span><span>${record.vehicle.make} ${record.vehicle.model} · ${record.vehicle.plate}</span></div></div>
-      <dl class="legacy-grid"><dt>Статус</dt><dd>Ожидает решения</dd><dt>Прибытие</dt><dd>02:${String(8 + state.visitCount).padStart(2, '0')}</dd><dt>Доверие</dt><dd>${state.trust}%</dd><dt>Визитов</dt><dd>${state.visitCount}</dd></dl>
-      <div class="computer-actions"><button data-action="inspect">Осмотреть через окно</button><button data-action="dialogue">Начать разговор</button><button data-action="documents">Документы</button></div>`);
-    this.computer.element.querySelector('[data-action="inspect"]')?.addEventListener('click', () => this.events.emit('attention.mode', { mode: 'outside' }));
-    this.computer.element.querySelector('[data-action="dialogue"]')?.addEventListener('click', () => this.renderDialogue());
-    this.computer.element.querySelector('[data-action="documents"]')?.addEventListener('click', () => this.renderDocuments());
-    this.computer.element.querySelector('[data-action="close"]')?.addEventListener('click', () => this.computer.close());
+    this.setTitle('ПОСЕТИТЕЛИ / АКТИВНЫЙ ВИЗИТ', {
+      page: 'visitors',
+      cards: [{
+        title: record.name,
+        details: [
+          `${record.age} лет · ${record.residence}`,
+          `${record.vehicle.make} ${record.vehicle.model} · ${record.vehicle.plate}`,
+        ],
+      }],
+      rows: [
+        { label: 'Статус', value: 'Ожидает решения' },
+        { label: 'Прибытие', value: `02:${String(8 + visitorState.visitCount).padStart(2, '0')}` },
+        { label: 'Доверие', value: `${visitorState.trust}%` },
+        { label: 'Визитов', value: visitorState.visitCount },
+      ],
+      actions: [
+        { label: 'Осмотреть через окно', action: 'inspect' },
+        { label: 'Начать разговор', action: 'dialogue' },
+        { label: 'Документы', action: 'documents' },
+      ],
+    });
   }
 
   private renderMessenger(): void {
-    this.setTitle('СООБЩЕНИЯ / НАЧАЛЬСТВО', `
-      <div class="database-card"><strong>02:14 · Начальство</strong><span>Сверяйте номер автомобиля с документами. При несоответствии не приступайте к обслуживанию.</span></div>
-      <div class="database-card"><strong>02:21 · Диспетчер</strong><span>Сообщение может ожидать подтверждения. Не передавайте сведения о посетителях другим лицам.</span></div>
-      <div class="computer-actions"><button data-action="confirm">Подтвердить инструкции</button></div>`);
-    this.computer.element.querySelector('[data-action="confirm"]')?.addEventListener('click', () => {
-      this.journal.push('Получены и подтверждены инструкции начальства');
-      this.renderMessenger();
+    this.setTitle('СООБЩЕНИЯ / НАЧАЛЬСТВО', {
+      page: 'messenger',
+      cards: [
+        {
+          title: '02:14 · Начальство',
+          details: ['Сверяйте номер автомобиля с документами. При несоответствии не приступайте к обслуживанию.'],
+        },
+        {
+          title: '02:21 · Диспетчер',
+          details: ['Сообщение может ожидать подтверждения. Не передавайте сведения о посетителях другим лицам.'],
+        },
+      ],
+      actions: [{ label: 'Подтвердить инструкции', action: 'confirm' }],
     });
   }
 
@@ -384,6 +555,7 @@ export class Game {
     this.state.shift.shiftMinutes = save.shiftMinutes;
     this.state.shift.money = save.money;
     this.economy.record.balance = save.money;
+    this.syncComputerBalance();
     this.npc.restoreStates(save.npcStates as never[]);
     if (save.activeVisit && typeof save.activeVisit === 'object') {
       const restored = save.activeVisit as Visit;
@@ -404,10 +576,13 @@ export class Game {
   }
 
   closeComputer(): void {
-    this.computer.close();
+    this.ui.computerOpen = false;
+    this.ui.computerFocused = false;
   }
 
   openComputer(): void {
-    this.computer.renderDesktop();
+    this.ui.computerOpen = true;
+    this.ui.computerFocused = true;
+    this.ui.menu = { page: 'desktop', title: 'Рабочий стол' };
   }
 }

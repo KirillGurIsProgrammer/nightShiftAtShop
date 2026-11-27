@@ -16,7 +16,7 @@ function createWindow() {
     },
   });
 
-  const devUrl = process.env.VITE_DEV_SERVER_URL;
+  const devUrl = process.env.VITE_DEV_SERVER_URL ?? (!app.isPackaged ? 'http://127.0.0.1:5173' : undefined);
   if (devUrl) {
     window.loadURL(devUrl);
   } else {

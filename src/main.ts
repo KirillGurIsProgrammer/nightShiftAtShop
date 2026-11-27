@@ -1,3 +1,4 @@
+import { createApp, reactive } from 'vue';
 import './style.css';
 import { Application } from 'pixi.js';
 import { AssetManager } from './rendering/AssetManager';
@@ -6,27 +7,30 @@ import { GameLoop } from './core/GameLoop';
 import { GameState } from './core/GameState';
 import { Game } from './core/Game';
 import { GasStationScene } from './scenes/GasStationScene';
-import { HUD } from './ui/HUD';
 import { detectBrowserCapabilities } from './platform/BrowserAdapter';
 import { FocusController } from './core/FocusController';
+import App from './ui/App.vue';
+import { createGameUIState } from './ui/MenuState';
+
+const ui = reactive(createGameUIState());
+createApp(App, { ui }).mount('#mount');
 
 const rootElement = document.querySelector<HTMLDivElement>('#game-root');
-const hudElement = document.querySelector<HTMLDivElement>('#hud');
-if (!rootElement || !hudElement) throw new Error('Не найдены корневые элементы интерфейса');
+const canvasHost = document.querySelector<HTMLDivElement>('#canvas-host');
+if (!rootElement || !canvasHost) throw new Error('Не найдены корневые элементы интерфейса');
 const root = rootElement;
+const canvasContainer = canvasHost;
 
 const app = new Application();
 const events = new EventBus();
 const state = new GameState();
-const hud = new HUD(hudElement);
 
 async function start(): Promise<void> {
   await new AssetManager().preload();
   const capabilities = detectBrowserCapabilities();
 
   if (!capabilities.webgl) {
-    root.replaceChildren();
-    root.insertAdjacentHTML('beforeend', '<div class="fatal-error"><h1>WebGL недоступен</h1><p>Включите аппаратное ускорение и перезапустите браузер.</p></div>');
+    ui.fatalError = 'Включите аппаратное ускорение и перезапустите приложение.';
     return;
   }
 
@@ -38,62 +42,21 @@ async function start(): Promise<void> {
     preference: 'webgl',
   });
 
-  root.appendChild(app.canvas);
+  canvasContainer.appendChild(app.canvas);
   app.canvas.setAttribute('aria-label', 'Ночная заправка');
 
   const scene = new GasStationScene(app, events);
-  const game = new Game(state, events, root);
+  const game = new Game(state, events, ui);
   await game.load();
-
-  const tooltip = document.createElement('div');
-  tooltip.className = 'tooltip';
-  root.appendChild(tooltip);
-
-  events.on<{ text: string; visible: boolean }>('ui.tooltip', ({ text, visible }) => {
-    tooltip.textContent = text;
-    tooltip.classList.toggle('visible', visible);
-  });
-
-  events.on<{ event: { name: string } }>('game.event', ({ event }) => {
-    tooltip.textContent = event.name;
-    tooltip.classList.add('visible');
-    window.setTimeout(() => tooltip.classList.remove('visible'), 2200);
-  });
-
-  const saveButton = document.createElement('button');
-  saveButton.className = 'save-button';
-  saveButton.textContent = 'Сохранить';
-  saveButton.addEventListener('click', () => {
-    void game.save();
-    saveButton.textContent = 'Сохранено';
-    window.setTimeout(() => { saveButton.textContent = 'Сохранить'; }, 1300);
-  });
-  root.appendChild(saveButton);
-
-  const noticeboard = document.createElement('section');
-  noticeboard.className = 'noticeboard-overlay';
-  noticeboard.innerHTML = `
-    <header><strong>ОБЪЯВЛЕНИЯ ДЛЯ НОЧНОГО ОПЕРАТОРА</strong><button data-action="visitor">Вернуться к посетителю</button></header>
-    <article><b>ИНСТРУКЦИЯ №1</b><p>Сверяйте регистрационный номер с документами и данными базы.</p></article>
-    <article><b>ИНСТРУКЦИЯ №2</b><p>Несовпадающие данные требуют дополнительного опроса.</p></article>
-    <article><b>ПРЕДУПРЕЖДЕНИЕ</b><p>Не передавайте информацию о посетителях по личным каналам связи.</p></article>
-    <article><b>НОВОЕ УКАЗАНИЕ</b><p>Повторный визит добавляется в историю и учитывается при решении.</p></article>`;
-  root.appendChild(noticeboard);
-  noticeboard.querySelector('[data-action="visitor"]')?.addEventListener('click', () => {
-    events.emit('attention.mode', { mode: 'visitor' });
-  });
-
-  const backdrop = document.createElement('div');
-  backdrop.className = 'focus-backdrop';
-  root.appendChild(backdrop);
 
   root.dataset.focus = 'world';
   root.classList.remove('computer-focused', 'focus-transitioning');
-  noticeboard.classList.remove('open');
+  ui.noticeboardOpen = false;
   game.closeComputer();
 
   const focusController = new FocusController(root, (mode) => {
-    noticeboard.classList.toggle('open', mode === 'bulletin-board');
+    ui.noticeboardOpen = mode === 'bulletin-board';
+    ui.computerFocused = mode === 'computer';
     root.classList.toggle('computer-focused', mode === 'computer');
     if (mode === 'bulletin-board') {
       game.closeComputer();
@@ -104,21 +67,24 @@ async function start(): Promise<void> {
     } else {
       game.closeComputer();
       state.setActivity('В основной игровой сцене');
-      // Returning to the world is only a mode transition. It must not create or start dialogue.
     }
   });
 
-  events.on<{ mode: 'computer' | 'noticeboard' | 'bulletin-board' | 'visitor' }>('attention.mode', ({ mode }) => {
+  events.on<{ mode: 'computer' | 'noticeboard' | 'bulletin-board' | 'visitor' | 'outside' }>('attention.mode', ({ mode }) => {
     if (mode === 'noticeboard' || mode === 'bulletin-board') void focusController.focus('bulletin-board');
     else if (mode === 'computer') void focusController.focus('computer');
     else void focusController.focus('world');
   });
 
-  root.addEventListener('attention.mode', (event) => {
-    const mode = (event as CustomEvent<{ mode: 'computer' | 'noticeboard' | 'bulletin-board' | 'visitor' }>).detail.mode;
-    if (mode === 'noticeboard' || mode === 'bulletin-board') void focusController.focus('bulletin-board');
-    else if (mode === 'computer') void focusController.focus('computer');
-    else void focusController.focus('world');
+  events.on<{ text: string; visible: boolean }>('ui.tooltip', ({ text, visible }) => {
+    ui.tooltip = text;
+    ui.tooltipVisible = visible;
+  });
+
+  events.on<{ event: { name: string } }>('game.event', ({ event }) => {
+    ui.tooltip = event.name;
+    ui.tooltipVisible = true;
+    window.setTimeout(() => { ui.tooltipVisible = false; }, 2200);
   });
 
   window.addEventListener('keydown', (event) => {
@@ -139,7 +105,12 @@ async function start(): Promise<void> {
       scene.setVisitorVisible(true);
       visitorArrivalElapsed = 8;
     }
-    hud.update(state);
+    const hours = Math.floor(state.shift.shiftMinutes / 60) % 24;
+    const minutes = Math.floor(state.shift.shiftMinutes % 60);
+    ui.hud.night = state.shift.night;
+    ui.hud.money = state.shift.money;
+    ui.hud.time = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    ui.hud.activity = state.shift.activeActivity;
     autoSaveElapsed += deltaSeconds;
     if (autoSaveElapsed >= 30) {
       autoSaveElapsed = 0;
@@ -157,6 +128,5 @@ async function start(): Promise<void> {
 
 start().catch((error: unknown) => {
   console.error(error);
-  root.replaceChildren();
-  root.insertAdjacentHTML('beforeend', '<div class="fatal-error"><h1>Не удалось запустить игру</h1><p>Браузер не смог инициализировать графику.</p></div>');
+  ui.fatalError = 'Браузер не смог инициализировать графику.';
 });

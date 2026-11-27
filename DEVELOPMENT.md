@@ -7,7 +7,7 @@
 - `npm run build` — проверить TypeScript и собрать production-бандл.
 - `npm run test` — выполнить unit-тесты.
 - `npm run lint` — проверить TypeScript-лингтером.
-- `npm run electron:dev` — собранная версия в Electron.
+- `npm run electron:dev` — запустить Vite и открыть приложение в Electron.
 - `npm run electron:build` — production-сборка Electron.
 
 ## Добавление NPC
