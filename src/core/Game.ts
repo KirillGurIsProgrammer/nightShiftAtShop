@@ -55,7 +55,7 @@ export class Game {
     this.shop = new ShopManager(itemData as ShopItem[]);
     const visitor = this.npc.selectVisitor(state.shift.night, this.seed);
     this.visitorId = visitor.id;
-    const pumpId = 1 + (this.seed + visitor.name.length) % 4;
+    const pumpId = this.fuel.selectPumpForFuelType(visitor.vehicle.fuelType, this.seed + visitor.name.length).id;
     this.visit = this.visitManager.create(visitor.id, pumpId, visitor.preferences[0] ?? null);
     this.visitManager.receiveRequest(this.visit);
 
@@ -469,6 +469,7 @@ export class Game {
   }
 
   private nextVisitor(): void {
+    this.npc.consumeFuelForTravel(this.visitorId);
     this.seed += 1;
     this.visitResolved = false;
     this.dialogueNodeId = 'greeting';
@@ -476,7 +477,7 @@ export class Game {
     this.dialogueHistory.splice(0, this.dialogueHistory.length);
     const record = this.npc.selectVisitor(this.state.shift.night, this.seed);
     this.visitorId = record.id;
-    const pumpId = 1 + (this.seed + record.name.length) % 4;
+    const pumpId = this.fuel.selectPumpForFuelType(record.vehicle.fuelType, this.seed + record.name.length).id;
     this.visit = this.visitManager.create(record.id, pumpId, record.preferences[0] ?? null);
     this.visitManager.receiveRequest(this.visit);
     this.state.setActivity('Посетитель у окна — ожидает внимания');

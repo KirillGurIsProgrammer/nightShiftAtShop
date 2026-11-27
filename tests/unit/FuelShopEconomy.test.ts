@@ -18,6 +18,22 @@ describe('service systems', () => {
     expect(result.reason).toBe('wrong_fuel');
   });
 
+  it('selects only available pumps with the requested fuel type', () => {
+    const fuel = new FuelManager([
+      { id: 1, fuelType: 'petrol', stock: 100, maxStock: 100, state: 'working', available: true },
+      { id: 2, fuelType: 'diesel', stock: 100, maxStock: 100, state: 'working', available: true },
+      { id: 3, fuelType: 'diesel', stock: 100, maxStock: 100, state: 'broken', available: true },
+      { id: 4, fuelType: 'diesel', stock: 0, maxStock: 100, state: 'working', available: true },
+      { id: 5, fuelType: 'diesel', stock: 100, maxStock: 100, state: 'working', available: false },
+      { id: 6, fuelType: 'diesel', stock: 100, maxStock: 100, state: 'working', available: true },
+    ]);
+
+    expect(fuel.selectPumpForFuelType('diesel', 0).id).toBe(2);
+    expect(fuel.selectPumpForFuelType('diesel', 1).id).toBe(6);
+    expect(fuel.selectPumpForFuelType('petrol', 0).id).toBe(1);
+    expect(() => new FuelManager([]).selectPumpForFuelType('diesel', 0)).toThrow(/Нет доступных колонок/);
+  });
+
   it('sells item and updates inventory', () => {
     const shop = new ShopManager([{ id: 'water', name: 'Вода', category: 'drink', purchasePrice: 20, salePrice: 55, stock: 2, maxStock: 10, description: '' }]);
     expect(shop.sell('water').cost).toBe(55);

@@ -30,6 +30,15 @@ export class NPCManager {
     return record;
   }
 
+  consumeFuelForTravel(id: string): void {
+    const record = this.getRecord(id);
+    if (!record) throw new Error(`NPC не найден: ${id}`);
+
+    const vehicle = record.vehicle;
+    const tripConsumption = Math.ceil(vehicle.tankCapacity * 0.25);
+    vehicle.fuelLevel = Math.max(0, Math.min(vehicle.tankCapacity, vehicle.fuelLevel) - tripConsumption);
+  }
+
   recordInteraction(id: string, message: string): void {
     const state = this.getState(id);
     state.interactionHistory.push(message);

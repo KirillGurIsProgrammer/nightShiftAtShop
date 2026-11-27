@@ -14,6 +14,18 @@ export class FuelManager {
 
   getPump(id: number): FuelPumpState | undefined { return this.pumps.find((pump) => pump.id === id); }
 
+  selectPumpForFuelType(fuelType: FuelPumpState['fuelType'], seed: number): FuelPumpState {
+    const compatiblePumps = this.pumps.filter((pump) =>
+      pump.fuelType === fuelType && pump.available && pump.state === 'working' && pump.stock > 0,
+    );
+    if (compatiblePumps.length === 0) {
+      throw new Error(`Нет доступных колонок с топливом типа "${fuelType}"`);
+    }
+
+    const index = ((Math.trunc(seed) % compatiblePumps.length) + compatiblePumps.length) % compatiblePumps.length;
+    return compatiblePumps[index]!;
+  }
+
   dispense(pumpId: number, vehicleFuelType: 'petrol' | 'diesel', tankCapacity: number, fuelLevel: number, requestedLiters: number): FuelResult {
     const pump = this.getPump(pumpId);
     if (!pump || !pump.available) return { success: false, liters: 0, cost: 0, reason: 'unavailable' };
